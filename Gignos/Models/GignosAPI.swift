@@ -53,6 +53,7 @@ protocol CatalogServing: Sendable {
 
 struct GignosAPI: CatalogServing {
     static let productionURL = URL(string: "https://gignos.com/research/api/v1")!
+    static let requestTimeout: TimeInterval = 15
     let baseURL: URL
     let session: URLSession
 
@@ -78,7 +79,7 @@ struct GignosAPI: CatalogServing {
     }
 
     private func fetch(_ url: URL) async throws -> Data {
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Self.requestTimeout)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw APIError.invalidResponse }
@@ -87,8 +88,15 @@ struct GignosAPI: CatalogServing {
     }
 
     static func decodePage(_ data: Data, section: WebsiteSection) throws -> CatalogPage {
-        guard let envelope = try JSONDecoder().decode(JSONValue.self, from: data).array,
-              envelope.count == 2, let rows = envelope[0].array, let meta = envelope[1].object,
+        guard let envelope = try JSONDecoder().decode(JSONValue.self, from: data).array else {
+            throw APIError.invalidResponse
+        }
+        // The API returns a bare empty array instead of its usual page envelope
+        // when a query has no matching records.
+        if envelope.isEmpty {
+            return CatalogPage(records: [], page: 1, total: 0, totalPages: 0)
+        }
+        guard envelope.count == 2, let rows = envelope[0].array, let meta = envelope[1].object,
               let page = meta["page"]?.integer, let total = meta["total"]?.integer,
               let pages = meta["total_pages"]?.integer, page >= 1, pages <= 1000,
               (pages >= page || (total == 0 && pages == 0)) else { throw APIError.invalidResponse }

@@ -80,6 +80,27 @@ private struct StubAPI: CatalogServing {
     }
 }
 
+@Suite struct GignosAPITests {
+    @Test func requestsTimeOutAfterFifteenSeconds() {
+        #expect(GignosAPI.requestTimeout == 15)
+    }
+
+    @Test func bareEmptyArrayDecodesAsAnEmptyPage() throws {
+        let page = try GignosAPI.decodePage(Data("[]".utf8), section: .sites)
+
+        #expect(page.records.isEmpty)
+        #expect(page.page == 1)
+        #expect(page.total == 0)
+        #expect(page.totalPages == 0)
+    }
+
+    @Test func malformedPageStillFails() {
+        #expect(throws: APIError.self) {
+            try GignosAPI.decodePage(Data("{}".utf8), section: .sites)
+        }
+    }
+}
+
 @MainActor @Suite struct SectionStoreTests {
     @Test func firstRunEndsWithACompleteCatalog() async throws {
         let store = SectionStore(section: .sites, db: try AppDatabase.inMemory(), api: StubAPI())
